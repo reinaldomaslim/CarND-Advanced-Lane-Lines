@@ -39,11 +39,8 @@ You're reading it!
 
 ####1. Briefly state how you computed the camera matrix and distortion coefficients. Provide an example of a distortion corrected calibration image.
 
-The code for this step is contained in the first code cell of the IPython notebook located in "./examples/example.ipynb" (or in lines # through # of the file called `some_file.py`).  
-
-I start by preparing "object points", which will be the (x, y, z) coordinates of the chessboard corners in the world. Here I am assuming the chessboard is fixed on the (x, y) plane at z=0, such that the object points are the same for each calibration image.  Thus, `objp` is just a replicated array of coordinates, and `objpoints` will be appended with a copy of it every time I successfully detect all chessboard corners in a test image.  `imgpoints` will be appended with the (x, y) pixel position of each of the corners in the image plane with each successful chessboard detection.  
-
-I then used the output `objpoints` and `imgpoints` to compute the camera calibration and distortion coefficients using the `cv2.calibrateCamera()` function.  I applied this distortion correction to the test image using the `cv2.undistort()` function and obtained this result: 
+The code for this step is contained in the first code cell of the IPython notebook located in "./examples/submission.ipynb" 
+First the object points in 3D cartesian coordinate of the chessboard has to be given, with the assumption of the chessboard on x-y plane with z=0. As the same chessboard is used for all images, the obj points are the same for all test images. Then for each image, using the cv2.findChessboardCorners() function to provide corners of each grid in the chessboard. Combining both object points and corners for all images in two lists, we then feed these lists to calibrateCamera() function to compute camera calibration and distortion coefficients. Afterwards, subsequent images can be corrected by undistort() function.
 
 ![alt text][image1]
 
@@ -52,50 +49,74 @@ I then used the output `objpoints` and `imgpoints` to compute the camera calibra
 ####1. Provide an example of a distortion-corrected image.
 To demonstrate this step, I will describe how I apply the distortion correction to one of the test images like this one:
 ![alt text][image2]
+
 ####2. Describe how (and identify where in your code) you used color transforms, gradients or other methods to create a thresholded binary image.  Provide an example of a binary image result.
-I used a combination of color and gradient thresholds to generate a binary image (thresholding steps at lines # through # in `another_file.py`).  Here's an example of my output for this step.  (note: this is not actually from one of the test images)
+
+I used color transform the images into HLS color space. By using the saturation S-channel, a binary image is formed by thresholding the colors in this channel. On the other hand, I also performed Sobel along x-axis to grayscale image to preserve vertical gradient lines and eliminate horizontal lines. 
+
+These two binary images are combined together as an input to the next pipeline.
+
 
 ![alt text][image3]
 
 ####3. Describe how (and identify where in your code) you performed a perspective transform and provide an example of a transformed image.
 
-The code for my perspective transform includes a function called `warper()`, which appears in lines 1 through 8 in the file `example.py` (output_images/examples/example.py) (or, for example, in the 3rd code cell of the IPython notebook).  The `warper()` function takes as inputs an image (`img`), as well as source (`src`) and destination (`dst`) points.  I chose the hardcode the source and destination points in the following manner:
+Perpective transform is applied using a warp() function with image input. The source src and destination dst polygon is hardcoded as follows:
 
 ```
-src = np.float32(
-    [[(img_size[0] / 2) - 55, img_size[1] / 2 + 100],
-    [((img_size[0] / 6) - 10), img_size[1]],
-    [(img_size[0] * 5 / 6) + 60, img_size[1]],
-    [(img_size[0] / 2 + 55), img_size[1] / 2 + 100]])
-dst = np.float32(
-    [[(img_size[0] / 4), 0],
-    [(img_size[0] / 4), img_size[1]],
-    [(img_size[0] * 3 / 4), img_size[1]],
-    [(img_size[0] * 3 / 4), 0]])
+src=np.float32(
+    [[img.shape[1]/2-120, img.shape[0]-230],
+    [img.shape[1]/2+120, img.shape[0]-230],
+    [img.shape[1]/2+650, img.shape[0]],
+    [img.shape[1]/2-650, img.shape[0]]])
+
+dst=np.float32([
+    [img.shape[1]*2/6, 0],
+    [img.shape[1]*4/6, 0],
+    [img.shape[1]*4/6, img.shape[0]],
+    [img.shape[1]*2/6, img.shape[0]]])
 
 ```
-This resulted in the following source and destination points:
 
-| Source        | Destination   | 
-|:-------------:|:-------------:| 
-| 585, 460      | 320, 0        | 
-| 203, 720      | 320, 720      |
-| 1127, 720     | 960, 720      |
-| 695, 460      | 960, 0        |
 
-I verified that my perspective transform was working as expected by drawing the `src` and `dst` points onto a test image and its warped counterpart to verify that the lines appear parallel in the warped image.
+
+The perpective transform is verified by checking that straight road will correspond to straight vertical lines on the warped image. Additionally, I mask the warped image by region_of_interest() function that removes pixels information outside this polygon. The vertices of this polygon is set as:
+```
+vertices = np.array([[(img.shape[1]/2-270, 0),
+    (img.shape[1]/2+270, 0),
+    (img.shape[1]/2+270, img.shape[0]),
+    (img.shape[1]/2-270, img.shape[0])]], dtype=np.int32)
+  
+```
+
+By doing this, we eliminate bushes or walls that lies close to the lane lines.
+
+
+
 
 ![alt text][image4]
 
 ####4. Describe how (and identify where in your code) you identified lane-line pixels and fit their positions with a polynomial?
 
-Then I did some other stuff and fit my lane lines with a 2nd order polynomial kinda like this:
+TO idenfify lane-line pixels, we adopt the sliding window approach with 9 sliding windows. Initially, the starting positions of the sliding windows are determined by highest peak on each side (left and right) of histogram (in x axis). Then, I set the window margin and minimum number of pixels to be found to recenter window. Both windows are then propagated upwards while recentering on each step if minimum pixels condition is achieved. 
+
+Given the nonzero pixels that belongs to right and left lane lines, I apply polyfit to extract a 2-degree polynomial from each lanes.
+
 
 ![alt text][image5]
 
 ####5. Describe how (and identify where in your code) you calculated the radius of curvature of the lane and the position of the vehicle with respect to center.
 
-I did this in lines # through # in my code in `my_other_file.py`
+To compute the radius of curvature, the conversion from pixel to meter must be available. I use the value 30m for image height, and 3.7m for image width. From this, we can convert left and right lane markers from pixels x-y space into meter X-Y coordinate. Similarly, a polyfit is applied to extract 2nd degree polynomial. Finally the radii or curvature can be computed by the following equation:
+
+```
+    # Calculate the new radii of curvature
+    left_curverad = ((1 + (2*left_fit_cr[0]*y_eval*ym_per_pix + left_fit_cr[1])**2)**1.5) / np.absolute(2*left_fit_cr[0])
+    right_curverad = ((1 + (2*right_fit_cr[0]*y_eval*ym_per_pix + right_fit_cr[1])**2)**1.5) / np.absolute(2*right_fit_cr[0])
+```
+
+Also the car radius of curvature is taken as mean of both lane's radii of curvature.
+
 
 ####6. Provide an example image of your result plotted back down onto the road such that the lane area is identified clearly.
 
